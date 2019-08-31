@@ -1,5 +1,7 @@
 package com.tw.workshop;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -19,16 +21,18 @@ public class BankAccount {
 
 	private int balance;
 	
+	private List<TransactionRecord> transactions = new ArrayList<TransactionRecord>();
+	
 	public CompletableFuture<Integer> deposit(int amount) {
 		return CompletableFuture
 				.supplyAsync(() -> {return RbiService.doNotify(this, Action.DEPOSIT, amount);},Pool.getIoBound())
-				.thenApplyAsync(result -> { if(result) balance += amount; return balance;},Pool.getCpuBound());
+				.thenApplyAsync(result -> { if(result) {balance += amount; transactions.add(new TransactionRecord(amount, Action.DEPOSIT));} return balance;},Pool.getCpuBound());
 	}
 	
 	public CompletableFuture<Integer> withdraw(int amount) {
 		return CompletableFuture
 				.supplyAsync(() -> {return RbiService.doNotify(this, Action.WITHDRAW, amount);},Pool.getIoBound())
-				.thenApplyAsync(result -> { if(result) balance -= amount; return balance;},Pool.getCpuBound());
+				.thenApplyAsync(result -> { if(result) {balance -= amount; transactions.add(new TransactionRecord(amount, Action.DEPOSIT));} return balance;},Pool.getCpuBound());
 	}
 	
 	//It is necessary to use single threaded pool so as to serialize access to balance. Parallel access may lead to dirty reads.
@@ -36,4 +40,19 @@ public class BankAccount {
 		return CompletableFuture
 				.supplyAsync((() -> balance),Pool.getCpuBound());
 	}
+	
+	private int calculateBalance() {
+		return transactions.stream().mapToInt(t -> { return (t.getAction()==Action.DEPOSIT?1:-1)*t.getAmount();}).sum();
+	}
+	
+	public CompletableFuture<Integer> getCalculatedBalance() {
+		return CompletableFuture
+				.supplyAsync(() -> {return calculateBalance();},Pool.getCpuBound());
+	}
+	
+	
+		
+	
+	
+	
 }
